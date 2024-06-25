@@ -58,6 +58,7 @@
     "lint-staged": "^15.2.2",
     "md5": "^2.3.0",
     "minimist": "^1.2.8",
+    "ora": "^8.0.1",
     "pnpm": "^9.1.1",
     "rimraf": "^5.0.7",
     "simple-git-hooks": "^2.11.1",

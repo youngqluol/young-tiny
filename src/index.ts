@@ -7,7 +7,7 @@ import fsPromises from 'node:fs/promises'
 import fs from 'node:fs'
 import minimist from 'minimist'
 import md5 from 'md5'
-import { error, header, success, transformSize, warn } from './utils'
+import { error, header, startSpinner, stopSpinner, success, transformSize, warn } from './utils'
 import { config, filesExclude, imgsInclude } from './constant'
 import type { UploadResponseData } from './types'
 
@@ -18,7 +18,7 @@ const args = minimist(process.argv.slice(2))
  * @param {*} md
  * 默认不生成md文件
  * 如果需要生成md文件，传入参数md
- * node index.js --md=true
+ * node index.js --md
  * @returns 是否生成md文件
  *
  * @param {*} folder
@@ -28,7 +28,7 @@ const args = minimist(process.argv.slice(2))
  */
 
 // 历史文件压缩后生成的md5
-const keys: string[] = []
+let keys: string[] = []
 
 // 读取指定文件夹下所有文件
 let filesList: any[] = []
@@ -36,11 +36,12 @@ let filesList: any[] = []
 // 压缩后文件列表
 const squashList: any[] = []
 
-// 读取文件
+// 读取指纹文件
 async function read(dir) {
   const res = await fsPromises.readFile(dir, 'utf-8')
   const { list } = JSON.parse(res)
-  success('文件指纹读取成功')
+  success('\u2714 文件指纹读取成功')
+  keys = keys.concat(...list)
   return list
 }
 
@@ -122,7 +123,7 @@ function getFileList(filePath) {
 
 function writeFile(fileName, data) {
   fs.writeFile(fileName, data, 'utf-8', () => {
-    success('文件生成成功')
+    success(`\u2714 ${fileName} 文件生成成功`)
   })
 }
 
@@ -164,22 +165,26 @@ function fingerprint() {
   fs.writeFile('squash.json', JSON.stringify({ list: keys.concat(list) }, null, '\t'), (err) => {
     if (err)
       throw err
-    success('文件指纹生成成功')
+    success('\u2714 文件指纹生成成功')
   })
 }
 
-function squash() {
+async function squash() {
   try {
-    Promise.all(
+    await Promise.all(
       filesList.map(async (item) => {
         success(item.path)
         const fpath = fs.readFileSync(item.path, 'binary')
         const { output = null } = await upload(fpath)
-        if (!output?.url)
-          return
+        if (!output?.url) {
+          error(`${item.path} upload fail`)
+          return Promise.resolve()
+        }
         const data = await download(output.url)
-        if (!data)
-          return
+        if (!data) {
+          error(`${item.path} download fail`)
+          return Promise.resolve()
+        }
         fs.writeFileSync(item.path, data, 'binary')
         return new Promise<void>((resolve) => {
           const miniSize = fs.statSync(item.path).size
@@ -206,17 +211,20 @@ export async function start() {
     const files = args.folder || 'src'
     const isDirExist = fs.existsSync(files)
     if (!isDirExist) {
-      error('当前目录不存在，请更换压缩目录')
+      error('\u2718 当前目录不存在，请更换压缩目录')
       return
     }
+    startSpinner('Processing...')
     const isJsonExist = fs.existsSync('squash.json')
     if (isJsonExist)
       await read('squash.json')
     filesList = getFileList(files)
-    squash()
+    await squash()
+    stopSpinner()
   }
   catch (err) {
     error(err)
+    stopSpinner()
     process.exit(1)
   }
 }

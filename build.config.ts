@@ -13,5 +13,6 @@ export default defineBuildConfig({
     'minimist',
     'md5',
     'chalk',
+    'ora',
   ],
 })
