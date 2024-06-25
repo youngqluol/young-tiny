@@ -1,20 +1,16 @@
 {
-  "name": "pkg-placeholder",
+  "name": "young-tiny",
   "type": "module",
-  "version": "0.0.0",
-  "packageManager": "pnpm@9.1.1",
-  "description": "_description_",
-  "author": "Anthony Fu <anthonyfu117@hotmail.com>",
+  "version": "1.0.0",
+  "description": "tiny image",
   "license": "MIT",
-  "funding": "https://github.com/sponsors/antfu",
-  "homepage": "https://github.com/antfu/pkg-placeholder#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/antfu/pkg-placeholder.git"
+    "url": "git+https://github.com/youngqluol/young-tiny.git"
   },
-  "bugs": "https://github.com/antfu/pkg-placeholder/issues",
-  "keywords": [],
-  "sideEffects": false,
+  "keywords": [
+    "tinypng"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -33,6 +29,9 @@
       ]
     }
   },
+  "bin": {
+    "young-tiny": "./dist/index.mjs"
+  },
   "files": [
     "dist"
   ],
@@ -42,7 +41,6 @@
     "lint": "eslint .",
     "prepublishOnly": "nr build",
     "release": "bumpp && npm publish",
-    "start": "esno src/index.ts",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "prepare": "simple-git-hooks"
@@ -51,11 +49,15 @@
     "@antfu/eslint-config": "^2.18.1",
     "@antfu/ni": "^0.21.12",
     "@antfu/utils": "^0.7.8",
+    "@types/minimist": "^1.2.5",
     "@types/node": "^20.12.12",
     "bumpp": "^9.4.1",
+    "chalk": "^5.3.0",
     "eslint": "^9.3.0",
     "esno": "^4.7.0",
     "lint-staged": "^15.2.2",
+    "md5": "^2.3.0",
+    "minimist": "^1.2.8",
     "pnpm": "^9.1.1",
     "rimraf": "^5.0.7",
     "simple-git-hooks": "^2.11.1",

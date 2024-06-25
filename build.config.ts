@@ -9,4 +9,9 @@ export default defineBuildConfig({
   rollup: {
     emitCJS: true,
   },
+  externals: [
+    'minimist',
+    'md5',
+    'chalk',
+  ],
 })
