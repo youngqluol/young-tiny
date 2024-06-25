@@ -191,7 +191,7 @@ function squash() {
       if (args.md)
         output(squashList)
       fingerprint()
-      console.timeEnd('squash time')
+      console.timeEnd('squash time:')
     }).catch((err) => {
       error(err)
     })
@@ -201,7 +201,7 @@ function squash() {
   }
 }
 
-async function start() {
+export async function start() {
   try {
     const files = args.folder || 'src'
     const isDirExist = fs.existsSync(files)
@@ -216,10 +216,10 @@ async function start() {
     squash()
   }
   catch (err) {
-    process.exit(1)
     error(err)
+    process.exit(1)
   }
 }
 
-console.time('squash time')
+console.time('squash time:')
 start()
