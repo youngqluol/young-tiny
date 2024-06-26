@@ -7,45 +7,32 @@ import fsPromises from 'node:fs/promises'
 import fs from 'node:fs'
 import minimist from 'minimist'
 import md5 from 'md5'
-import { error, header, startSpinner, stopSpinner, success, transformSize, warn } from './utils'
+import chalk from 'chalk'
+import { error, header, isDir, log, startSpinner, stopSpinner, success, transformSize, warn } from './utils'
 import { config, filesExclude, imgsInclude } from './constant'
 import type { UploadResponseData } from './types'
 
 const args = minimist(process.argv.slice(2))
 
-/**
- * args参数
- * @param {*} md
- * 默认不生成md文件
- * 如果需要生成md文件，传入参数md
- * node index.js --md
- * @returns 是否生成md文件
- *
- * @param {*} folder
- * 图片压缩文件范围，默认src文件夹
- * node index.js --folder=src
- * @returns
- */
+//  avoid duplicate compress
+let md5Keys: string[] = []
 
-// 历史文件压缩后生成的md5
-let keys: string[] = []
-
-// 读取指定文件夹下所有文件
+// files waiting to upload
 let filesList: any[] = []
 
-// 压缩后文件列表
-const squashList: any[] = []
+// files info after compressing
+const compressList: any[] = []
 
-// 读取指纹文件
+// read fingerprint
 async function read(dir) {
   const res = await fsPromises.readFile(dir, 'utf-8')
   const { list } = JSON.parse(res)
-  success('\u2714 文件指纹读取成功')
-  keys = keys.concat(...list)
+  success('\u2714 read file md5 successfully')
+  md5Keys = md5Keys.concat(...list)
   return list
 }
 
-// 上传文件
+//  upload file
 function upload(file): Promise<UploadResponseData> {
   const options = header()
   return new Promise((resolve, reject) => {
@@ -69,7 +56,7 @@ function upload(file): Promise<UploadResponseData> {
   })
 }
 
-// 下载文件
+// download file
 function download(url: string): Promise<any> {
   const options = new URL(url)
   return new Promise((resolve, reject) => {
@@ -89,13 +76,15 @@ function download(url: string): Promise<any> {
   })
 }
 
-// 递归遍历指定类型文件
-function readFile(filePath: string, filesList: any[]) {
-  const files = fs.readdirSync(filePath)
+// read files in target dir
+function readFile(dir: string, filesList: any[], inputFiles: string[] = []) {
+  const files = inputFiles.length ? inputFiles : fs.readdirSync(dir)
   files.forEach((file) => {
-    const fPath = path.join(filePath, file)
-    const states = fs.statSync(fPath)
     const extname = path.extname(file)
+    if (!imgsInclude.includes(extname))
+      return
+    const fPath = path.join(dir, file)
+    const states = fs.statSync(fPath)
     if (states.isFile()) {
       const obj = {
         size: states.size,
@@ -105,7 +94,7 @@ function readFile(filePath: string, filesList: any[]) {
       const key = md5(fPath + states.size)
       if (states.size > config.max)
         warn(`文件${file}超出5M的压缩限制`)
-      if (states.size < config.max && imgsInclude.includes(extname) && !keys.includes(key))
+      if (states.size < config.max && (args.repeat !== false || !md5Keys.includes(key)))
         filesList.push(obj)
     }
     else {
@@ -115,9 +104,9 @@ function readFile(filePath: string, filesList: any[]) {
   })
 }
 
-function getFileList(filePath) {
+function getFileList(dir, inputFiles) {
   const filesList = []
-  readFile(filePath, filesList)
+  readFile(dir, filesList, inputFiles)
   return filesList
 }
 
@@ -131,7 +120,10 @@ let str = `# 项目原始图片对比\n
 ## 图片压缩信息\n
 | 文件名 | 文件体积 | 压缩后体积 | 压缩比 | 文件路径 |\n| -- | -- | -- | -- | -- |\n`
 
+// 输出压缩信息.md
 function output(list) {
+  if (list.length === 0)
+    return
   for (let i = 0; i < list.length; i++) {
     const { name, path: _path, size, miniSize } = list[i]
     const fileSize = `${transformSize(size)}`
@@ -151,18 +143,18 @@ function output(list) {
 | 原始体积 | 压缩后提交 | 压缩比 |\n| -- | -- | -- |\n| ${transformSize(size)} | ${transformSize(miniSize)} | ${`${(100 * (size - miniSize) / size).toFixed(2)}%`} |
   `
   str = str + s
-  writeFile('图片压缩比.md', str)
+  writeFile('图片压缩信息.md', str)
 }
 
 // 生成文件指纹
 function fingerprint() {
   const list: any[] = []
-  squashList.forEach((item) => {
+  compressList.forEach((item) => {
     const { miniSize, path } = item
     const md5s = md5(path + miniSize)
     list.push(md5s)
   })
-  fs.writeFile('squash.json', JSON.stringify({ list: keys.concat(list) }, null, '\t'), (err) => {
+  fs.writeFile('compress.json', JSON.stringify({ list: md5Keys.concat(list) }, null, '\t'), (err) => {
     if (err)
       throw err
     success('\u2714 文件指纹生成成功')
@@ -170,64 +162,111 @@ function fingerprint() {
 }
 
 async function squash() {
-  try {
-    await Promise.all(
-      filesList.map(async (item) => {
-        success(item.path)
-        const fpath = fs.readFileSync(item.path, 'binary')
-        const { output = null } = await upload(fpath)
-        if (!output?.url) {
-          error(`${item.path} upload fail`)
-          return Promise.resolve()
-        }
-        const data = await download(output.url)
-        if (!data) {
-          error(`${item.path} download fail`)
-          return Promise.resolve()
-        }
-        fs.writeFileSync(item.path, data, 'binary')
-        return new Promise<void>((resolve) => {
-          const miniSize = fs.statSync(item.path).size
-          squashList.push({ ...item, miniSize })
-          resolve()
-        })
-      }),
-    ).then(() => {
-      if (args.md)
-        output(squashList)
+  const length = filesList.length
+  await Promise.all(
+    filesList.map(async (item, index) => {
+      success(item.path)
+      if (index === length - 1)
+        success(`\u2714 Found ${length} image`)
+      const fileData = fs.readFileSync(item.path, 'binary')
+      const { output = null } = await upload(fileData)
+      if (!output?.url) {
+        error(`${item.path} upload fail`)
+        return Promise.resolve()
+      }
+      const data = await download(output.url)
+      if (!data) {
+        error(`${item.path} download fail`)
+        return Promise.resolve()
+      }
+      let newFilePath = item.path
+      if (args.b) {
+        const targetFolder = typeof args.b === 'string' ? args.b : '_compress'
+        if (!fs.existsSync(targetFolder))
+          fs.mkdirSync(targetFolder, { recursive: true })
+        newFilePath = path.join(targetFolder, item.name)
+      }
+      fs.writeFileSync(newFilePath, data, 'binary')
+      success(`\u2714 ${item.path} 压缩成功`)
+      return new Promise<void>((resolve) => {
+        const miniSize = fs.statSync(newFilePath).size
+        compressList.push({ ...item, miniSize })
+        resolve()
+      })
+    }),
+  ).then(() => {
+    if (args.md)
+      output(compressList)
+    if (args.repeat === false)
       fingerprint()
-      console.timeEnd('squash time:')
-    }).catch((err) => {
-      error(err)
-    })
-  }
-  catch (error) {
-    return Promise.reject(error)
-  }
-}
-
-export async function start() {
-  try {
-    const files = args.folder || 'src'
-    const isDirExist = fs.existsSync(files)
-    if (!isDirExist) {
-      error('\u2718 当前目录不存在，请更换压缩目录')
-      return
-    }
-    startSpinner('Processing...')
-    const isJsonExist = fs.existsSync('squash.json')
-    if (isJsonExist)
-      await read('squash.json')
-    filesList = getFileList(files)
-    await squash()
-    stopSpinner()
-  }
-  catch (err) {
+  }).catch((err) => {
     error(err)
-    stopSpinner()
-    process.exit(1)
-  }
+  })
 }
 
-console.time('squash time:')
-start()
+function consoleHelp() {
+  const tips = `
+    Usage
+    tiny <file or path>
+    tiny -b   // backup all your images into \`_compress\`
+    tiny --b=dist  // backup all your images into \`dist\`
+    tiny --md  // output compress info
+    tiny --repeat=false  // not compress file repeatly
+
+    Example
+
+    tiny      // current dir
+    tiny .    // current dir
+
+    tiny a.jpg
+    tiny a.jpg b.jpg
+    tiny img/test.jpg
+
+    tiny folder
+    `
+  console.log(chalk.green(tips))
+}
+
+export async function main() {
+  if (args.h) {
+    consoleHelp()
+    return
+  }
+  let targetDir = './' // default path
+  let inputFiles: string[] = []
+  if (args._.length) { // user input
+    if (args._.length === 1) { // "tiny ." || "tiny ./" || "tiny folder"
+      if (args._[0] === '.' || args._[0] === './' || isDir(args._[0]))
+        targetDir = args._[0] === '.' ? './' : args._[0]
+      else
+        inputFiles = args._
+    }
+    else {
+      inputFiles = args._ // "tiny 1.png 2.png"
+    }
+  }
+  const isDirExist = fs.existsSync(targetDir)
+  if (!isDirExist) {
+    error('\u2718 当前目录不存在，请更换压缩目录')
+    return
+  }
+  console.time('compress time:')
+  startSpinner('Processing...')
+  if (args.repeat === false) {
+    const isJsonExist = fs.existsSync('compress.json')
+    if (isJsonExist)
+      await read('compress.json')
+  }
+  filesList = getFileList(targetDir, inputFiles)
+  if (filesList.length === 0)
+    throw new Error('未找到需要压缩的图片')
+  await squash()
+  console.timeEnd('compress time:')
+  stopSpinner()
+}
+
+main().catch((err) => {
+  error(err)
+  stopSpinner()
+  process.exit(1)
+})
