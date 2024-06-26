@@ -1,7 +1,7 @@
 {
   "name": "young-tiny",
   "type": "module",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "tiny image",
   "license": "MIT",
   "repository": {
@@ -30,7 +30,7 @@
     }
   },
   "bin": {
-    "young-tiny": "./dist/index.mjs"
+    "tiny": "./dist/index.mjs"
   },
   "files": [
     "dist"
